@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
@@ -9,12 +10,11 @@ const { startPhysicsLoop } = require("./src/physics/physicsLoops");
 const { startSnapshotLoop } = require("./src/network/snapShots");
 
 const PORT = process.env.PORT || 3000;
-const isDev = process.env.NODE_ENV !== "production";
-const allowedOrigins = isDev
-  ? true
-  : process.env.ALLOWED_ORIGIN
+const allowedOrigins = process.env.ALLOWED_ORIGIN
   ? process.env.ALLOWED_ORIGIN.split(",").map((o) => o.trim())
-  : [];
+  : []; // Fallback if env is missing in production
+
+console.log("CORS Allowed Origins:", allowedOrigins);
 
 async function startServer() {
   // wait until Rapier + world are ready
@@ -24,9 +24,7 @@ async function startServer() {
   const server = http.createServer(app);
 
   const io = new Server(server, {
-    cors: { origin: allowedOrigins, credentials: true },
-    pingInterval: 25000,
-    pingTimeout: 20000,
+    cors: { origin: allowedOrigins },
   });
 
   io.use((socket, next) => {

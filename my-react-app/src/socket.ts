@@ -5,5 +5,6 @@ export const socket = io(URL, {
   autoConnect: false,
   forceNew: true,
   reconnection: false,
+  transports: ['websocket'],
 });
 

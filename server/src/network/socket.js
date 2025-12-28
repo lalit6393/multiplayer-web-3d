@@ -3,6 +3,8 @@ const { addPlayer, removePlayer } = require("../players/players");
 
 function registerSockets(io, world, RAPIER) {
   io.on("connection", (socket) => {
+    console.log("Connected: ", socket.id);
+    
     // 1. Create Kinematic Velocity Body (Best for manual + physics sync)
     const bodyDesc = RAPIER.RigidBodyDesc.kinematicPositionBased()
       .setTranslation(Math.random() * 4, 10, Math.random() * 4)

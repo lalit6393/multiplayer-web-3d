@@ -63,6 +63,8 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   // --- STANDARD SIMULATION FUNCTION ---
   // This logic MUST be identical to your server
   const runSimulationStep = (input: any) => {
+    const collider = rbRef.current?.collider(0);
+    if (!collider) return;
     if (isGrounded.current && verticalVelocity.current <= 0) {
       verticalVelocity.current = 0;
       if (input.jump) verticalVelocity.current = JUMP_VELOCITY;
@@ -74,7 +76,7 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
     const move = playerMovement(input.yaw, input);
 
     characterController.computeColliderMovement(
-      rbRef.current.collider(0),
+      collider,
       { x: move.moveX * SPEED, y: verticalVelocity.current, z: move.moveZ * SPEED }
     );
 
