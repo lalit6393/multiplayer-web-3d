@@ -7,14 +7,14 @@ export const startNetworkSync = async (dispatch: AppDispatch) => {
   socket.connect();
 
   socket.on("connect", () => {
-    // console.log("Connected:", socket.id);
+    console.log("Connected:", socket.id);
     if (socket.id) {
       dispatch(setMyId(socket.id));
     }
   });
 
   socket.on("disconnect", () => {
-    // console.log("Disconnected");
+    console.log("Disconnected");
   });
 
   // Single authoritative update path

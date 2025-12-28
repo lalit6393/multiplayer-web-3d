@@ -14,6 +14,7 @@ const OtherPlayers = () => {
 
   // latest authoritative snapshot
   const latest = snapshots[snapshots.length - 1];
+  
 
   return (
     <>
