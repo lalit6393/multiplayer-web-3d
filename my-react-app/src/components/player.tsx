@@ -1,4 +1,4 @@
-import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
+import { forwardRef, useImperativeHandle, useMemo, useRef } from "react";
 import { PLAYER_CYLINDER_HEIGHT, PLAYER_RADIUS } from "../constants/playerConstants";
 import type { Mesh } from "three";
 import { useFrame } from "@react-three/fiber";
@@ -6,7 +6,7 @@ import * as THREE from 'three';
 import { playerMovement } from "../helpers/movementHelper";
 import { usePlayerInput } from "../hooks/usePlayerInput";
 import { socket } from "../socket";
-import { useSelector } from "react-redux";
+import { shallowEqual, useSelector } from "react-redux";
 import type { RootState } from "../redux/store";
 import { CapsuleCollider, RigidBody, useRapier, type RapierRigidBody } from "@react-three/rapier";
 
@@ -34,182 +34,141 @@ const GRAVITY_PER_SECOND = -25;
 const JUMP_VELOCITY = 12 * TICK_RATE;
 const TICK_GRAVITY = GRAVITY_PER_SECOND * TICK_RATE * TICK_RATE; // Standard gravity needs a boost for games
 
+const v3 = new THREE.Vector3();
 
-const Player = forwardRef<RapierRigidBody, PlayerProps>((props, ref) => {
+const Player = forwardRef<THREE.Mesh, PlayerProps>((props, ref) => {
+  const myId = useSelector((state: RootState) => state.player.myId);
+  const snapshots = useSelector((state: RootState) => state.player.snapshots, shallowEqual);
   const rbRef = useRef<RapierRigidBody>(null!);
+  const meshRef = useRef<Mesh>(null!);
   const { world } = useRapier();
   const inputRef = usePlayerInput();
-  const accumulator = useRef<number>(0);
-  const meshRef = useRef<Mesh>(null!);
-  const prevPosition = useRef(new THREE.Vector3());
-  const currentPosition = useRef(new THREE.Vector3());
-  const verticalVelocity = useRef(0);
   const inputSequence = useRef(0);
-  const inputHistory = useRef<PacketType[]>([]);
-  const myId = useSelector((state: RootState) => state.player.myId);
-  const snapshots = useSelector((state: RootState) => state.player.snapshots);
-  const lastProcessedSnapshot = useRef<number>(-1);
-  const isGrounded = useRef<boolean>(true);
 
-  // 1. Initialize the Character Controller to match Backend
+  // State Refs
+  const verticalVelocity = useRef(0);
+  const isGrounded = useRef(true);
+  const inputHistory = useRef<PacketType[]>([]);
+  const lastProcessedSnapshot = useRef<number>(-1);
+  const accumulator = useRef<number>(0);
+
   const characterController = useMemo(() => {
     const controller = world.createCharacterController(0.01);
     controller.enableAutostep(0.5, 0.2, true);
     return controller;
   }, [world]);
 
-  useEffect(() => {
-    if (snapshots.length === 0 || !myId || !rbRef.current) return;
+  useImperativeHandle(ref, () => meshRef.current);
+
+  // --- STANDARD SIMULATION FUNCTION ---
+  // This logic MUST be identical to your server
+  const runSimulationStep = (input: any) => {
+    if (isGrounded.current && verticalVelocity.current <= 0) {
+      verticalVelocity.current = 0;
+      if (input.jump) verticalVelocity.current = JUMP_VELOCITY;
+    } else {
+      verticalVelocity.current += TICK_GRAVITY;
+    }
+    verticalVelocity.current = Math.max(verticalVelocity.current, -0.5);
+
+    const move = playerMovement(input.yaw, input);
+
+    characterController.computeColliderMovement(
+      rbRef.current.collider(0),
+      { x: move.moveX * SPEED, y: verticalVelocity.current, z: move.moveZ * SPEED }
+    );
+
+    const corrected = characterController.computedMovement();
+    const currentPos = rbRef.current.translation();
+
+    // Immediate apply for the simulation
+    rbRef.current.setTranslation({
+      x: currentPos.x + corrected.x,
+      y: currentPos.y + corrected.y,
+      z: currentPos.z + corrected.z
+    }, true);
+
+    isGrounded.current = characterController.computedGrounded();
+  };
+
+  // --- STANDARD RECONCILIATION ---
+  useFrame(() => {
+    if (!rbRef.current || snapshots.length === 0 || !myId) return;
 
     const latestSnapshot = snapshots[snapshots.length - 1];
     const myState = latestSnapshot.players[myId];
 
+    // Check if we need to reconcile (Snap to server truth and replay)
     if (myState && myState.lastProcessedInputSeq > lastProcessedSnapshot.current) {
       lastProcessedSnapshot.current = myState.lastProcessedInputSeq;
 
-      // 1. TELEPORT TO SERVER TRUTH
-      // We set the physics body to exactly where the server says it was
-      rbRef.current.setTranslation(
-        new THREE.Vector3(myState.position.x, myState.position.y, myState.position.z),
-        true
-      );
-      console.log('velocity resetting to: ', verticalVelocity.current, myState.verticalVelocity);
-      // Reset our local tracking of vertical velocity to server's truth
-      // Note: If your server doesn't send velocity, you might need to track it
-      if (myState.isGrounded) {
-        verticalVelocity.current = 0;
-      }
+      // 1. Teleport back to Server Truth
+      rbRef.current.setTranslation(myState.position, true);
+      verticalVelocity.current = myState.verticalVelocity;
+      isGrounded.current = myState.isGrounded;
 
+      // 2. Clear old history
+      inputHistory.current = inputHistory.current.filter(p => p.seq > myState.lastProcessedInputSeq);
 
-      // 2. DISCARD ACKNOWLEDGED INPUTS
-      inputHistory.current = inputHistory.current.filter(
-        (packet) => packet.seq > myState.lastProcessedInputSeq
-      );
-
-      // 3. THE REPLAY LOOP
-      // We re-run every input the server hasn't seen yet
-      inputHistory.current.forEach((packet) => {
-        const currentPos = rbRef.current.translation();
-        const move = playerMovement(packet.input.yaw, packet.input);
-
-        // Compute movement exactly like simulation.js
-        characterController.computeColliderMovement(
-          rbRef.current.collider(0),
-          {
-            x: move.moveX * SPEED,
-            y: verticalVelocity.current,
-            z: move.moveZ * SPEED,
-          }
-        );
-
-        const corrected = characterController.computedMovement();
-
-        // Apply result to body immediately so the next loop iteration 
-        // starts from this new corrected position
-        // rbRef.current.setTranslation({
-        //   x: currentPos.x + corrected.x,
-        //   y: currentPos.y + corrected.y,
-        //   z: currentPos.z + corrected.z,
-        // }, false);
-
+      // 3. Fast-forward back to present
+      inputHistory.current.forEach(packet => {
+        runSimulationStep(packet.input);
       });
-
-      // 4. SYNC INTERPOLATION REFS
-      // This prevents the visual mesh from "snapping" back to old positions
-      currentPosition.current.copy(rbRef.current.translation() as THREE.Vector3);
-      prevPosition.current.copy(currentPosition.current);
     }
-  }, [snapshots, myId, characterController]);
+  });
 
-  useImperativeHandle(ref, () => rbRef.current);
-
-
+  // --- STANDARD PREDICTION LOOP ---
   useFrame((_, delta) => {
-    if (!rbRef.current) return;
     accumulator.current += Math.min(delta, 0.25);
 
-    const { yaw } = inputRef.current;
-
-    // Inside useFrame while (accumulator.current >= TICK_RATE)
     while (accumulator.current >= TICK_RATE) {
+      // 1. Record input
+      const seq = ++inputSequence.current;
+      const packet = { seq, input: { ...inputRef.current } };
 
-      // 1. Update Velocity for Next Tick (Single Pass Logic)
-      if (isGrounded.current && verticalVelocity.current <= 0) {
-        verticalVelocity.current = 0;
-        if (inputRef.current.jump) verticalVelocity.current = JUMP_VELOCITY;
-      } else {
-        verticalVelocity.current += TICK_GRAVITY;
-      }
-      verticalVelocity.current = Math.max(verticalVelocity.current, -0.5);
+      // 2. Predict locally
+      runSimulationStep(packet.input);
 
-      // if (verticalVelocity.current > 0) {
-      //   characterController.disableSnapToGround();
-      // } else {
-      //   characterController.enableSnapToGround(0.1);
-      // }
-
-      // Calculate movement vector
-      const move = playerMovement(yaw, inputRef.current);
-      const movementVector = {
-        x: move.moveX * SPEED,
-        y: verticalVelocity.current,
-        z: move.moveZ * SPEED
-      };
-
-      // 2. Compute Movement (The Rapier Way)
-      // This handles wall sliding and step-climbing automatically
-      characterController.computeColliderMovement(
-        rbRef.current.collider(0),
-        movementVector
-      );
-
-      const corrected = characterController.computedMovement();
-      isGrounded.current = characterController.computedGrounded();
-
-      const currentTranslation = rbRef.current.translation();
-
-      // 3. Apply New Position
-      rbRef.current.setNextKinematicTranslation({
-        x: currentTranslation.x + corrected.x,
-        y: currentTranslation.y + corrected.y,
-        z: currentTranslation.z + corrected.z
-      });
-
-
-      // 6. NETWORKING
-      inputSequence.current++;
-      const packet: PacketType = {
-        seq: inputSequence.current,
-        input: { ...inputRef.current }
-      };
-      socket.emit("player-input", packet);
+      // 3. Store for later reconciliation
       inputHistory.current.push(packet);
+      socket.emit("player-input", packet);
 
       accumulator.current -= TICK_RATE;
     }
-  })
+
+    // --- STANDARD VISUAL INTERPOLATION ---
+    // This is how you stop the jitter. The mesh 'trails' the body.
+    if (meshRef.current && rbRef.current) {
+      const t = rbRef.current.translation();
+      v3.set(t.x, t.y, t.z);
+      // Use a standard lerp factor. 0.25 is a good balance of responsiveness and smoothness.
+      meshRef.current.position.lerp(v3, 0.25);
+    }
+  });
 
   return (
-    <RigidBody
-      ref={rbRef}
-      type="kinematicPosition" // Crucial: must match backend logic
-      colliders={false}         // We define a custom collider below
-      enabledRotations={[false, false, false]} // Stops player from tipping over
-      gravityScale={0}
-      position={[0, 4, 0]}
-    >
-      <CapsuleCollider
-        args={[PLAYER_CYLINDER_HEIGHT / 2, PLAYER_RADIUS]}
-        friction={0}
-        restitution={0}
-        frictionCombineRule={1}
-        restitutionCombineRule={1}
-      />
+    <>
+      <RigidBody
+        ref={rbRef}
+        type="kinematicPosition"
+        colliders={false}
+        enabledRotations={[false, false, false]}
+        position={[0, 5, 0]}
+        gravityScale={0}
+      >
+        <CapsuleCollider
+          args={[PLAYER_CYLINDER_HEIGHT / 2, PLAYER_RADIUS]}
+          friction={0}
+          restitution={0}
+          frictionCombineRule={1}
+          restitutionCombineRule={1}
+        />
+      </RigidBody>
       <mesh ref={meshRef}>
-        <capsuleGeometry args={[PLAYER_RADIUS, PLAYER_CYLINDER_HEIGHT, 8, 16]} />
+        <capsuleGeometry args={[PLAYER_RADIUS, PLAYER_CYLINDER_HEIGHT]} />
         <meshStandardMaterial color="purple" />
       </mesh>
-    </RigidBody>
+    </>
   );
 });
 

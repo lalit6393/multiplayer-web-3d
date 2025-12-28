@@ -11,7 +11,7 @@ const initialState: PlayerSliceState = {
     snapshots: [],
 };
 
-const MAX_SNAPSHOTS = 5;
+const MAX_SNAPSHOTS = 10;
 
 export const playerSlice = createSlice({
     name: 'player',

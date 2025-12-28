@@ -54,7 +54,7 @@ function simulatePlayers(world, io, RAPIER) {
 
       // D. Apply resulting position
       const currentPos = player.body.translation();
-      player.body.setNextKinematicTranslation({
+      player.body.setTranslation({
         x: currentPos.x + corrected.x,
         y: currentPos.y + corrected.y,
         z: currentPos.z + corrected.z,

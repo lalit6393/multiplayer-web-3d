@@ -9,14 +9,14 @@ import OtherPlayers from "./components/otherPlayers";
 import * as THREE from 'three';
 import { usePlayerInput } from "./hooks/usePlayerInput";
 import { CameraController } from "./controllers/cameraContoller";
-import { Physics, RapierRigidBody, } from "@react-three/rapier";
+import { Physics } from "@react-three/rapier";
 
 const App = () => {
 
   const dispatch = useDispatch();
   const groundGroupRef = useRef<THREE.Group>(null!);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const playerRef = useRef<RapierRigidBody>(null!);
+  const playerRef = useRef<THREE.Mesh>(null!);
   const inputRef = usePlayerInput();
 
   useEffect(() => {

@@ -13,6 +13,7 @@ function broadcastSnapshots(io) {
           rotation: p.body.rotation(),
           verticalVelocity: p.verticalVelocity,
           lastProcessedInputSeq: p.lastInputSeq,
+          isGrounded: p.isGrounded,
         },
       ])
     ),

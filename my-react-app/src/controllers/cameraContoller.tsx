@@ -1,5 +1,4 @@
 import { useFrame, useThree } from "@react-three/fiber";
-import type { RapierRigidBody } from "@react-three/rapier";
 import type { RefObject } from "react";
 import * as THREE from "three";
 
@@ -15,7 +14,7 @@ interface InputPacket {
 
 interface CameraControllerProps {
     // A RefObject specifically for a Three.js Mesh
-    playerRef: RefObject<RapierRigidBody>;
+    playerRef: RefObject<THREE.Mesh>;
     // A RefObject for your custom input packet
     inputRef: RefObject<InputPacket>;
 }
@@ -31,7 +30,7 @@ export const CameraController = ({ playerRef, inputRef }: CameraControllerProps)
         if (!playerRef.current) return;
 
         const { yaw, pitch } = inputRef.current;
-        const playerPos = playerRef.current.translation();
+        const playerPos = playerRef.current.position;
 
         // Calculate Orbit Position
         tempVec.copy(CAMERA_BASE_OFFSET);

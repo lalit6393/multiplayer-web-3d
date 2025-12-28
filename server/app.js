@@ -9,6 +9,12 @@ const { startPhysicsLoop } = require("./src/physics/physicsLoops");
 const { startSnapshotLoop } = require("./src/network/snapShots");
 
 const PORT = process.env.PORT || 3000;
+const isDev = process.env.NODE_ENV !== "production";
+const allowedOrigins = isDev
+  ? true
+  : process.env.ALLOWED_ORIGIN
+  ? process.env.ALLOWED_ORIGIN.split(",").map((o) => o.trim())
+  : [];
 
 async function startServer() {
   // wait until Rapier + world are ready
@@ -18,7 +24,9 @@ async function startServer() {
   const server = http.createServer(app);
 
   const io = new Server(server, {
-    cors: { origin: "*" },
+    cors: { origin: allowedOrigins, credentials: true },
+    pingInterval: 25000,
+    pingTimeout: 20000,
   });
 
   io.use((socket, next) => {
@@ -26,6 +34,10 @@ async function startServer() {
       return next(new Error("SERVER_FULL"));
     }
     next();
+  });
+
+  app.get("/", (req, res) => {
+    res.send("Server running");
   });
 
   // register socket events
