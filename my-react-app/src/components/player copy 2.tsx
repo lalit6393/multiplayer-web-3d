@@ -37,13 +37,13 @@ const TICK_GRAVITY = GRAVITY_PER_SECOND * TICK_RATE * TICK_RATE; // Standard gra
 const v3 = new THREE.Vector3();
 
 
-const Player = forwardRef<RapierRigidBody, PlayerProps>((props, ref) => {
+const Player = forwardRef<RapierRigidBody, PlayerProps>((_, ref) => {
   const rbRef = useRef<RapierRigidBody>(null!);
   const { world } = useRapier();
   const inputRef = usePlayerInput();
   const accumulator = useRef<number>(0);
   const meshRef = useRef<Mesh>(null!);
-  const prevPosition = useRef(new THREE.Vector3());
+  // const prevPosition = useRef(new THREE.Vector3());
   const currentPosition = useRef(new THREE.Vector3());
   const verticalVelocity = useRef(0);
   const inputSequence = useRef(0);

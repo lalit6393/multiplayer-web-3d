@@ -36,7 +36,7 @@ const TICK_GRAVITY = GRAVITY_PER_SECOND * TICK_RATE * TICK_RATE; // Standard gra
 
 const v3 = new THREE.Vector3();
 
-const Player = forwardRef<THREE.Mesh, PlayerProps>((props, ref) => {
+const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   const myId = useSelector((state: RootState) => state.player.myId);
   const snapshots = useSelector((state: RootState) => state.player.snapshots, shallowEqual);
   const rbRef = useRef<RapierRigidBody>(null!);

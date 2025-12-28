@@ -18,7 +18,7 @@ const FollowCamera = ({
     (state: RootState) => state.player.snapshots
   );
 
-  const [targetId, setTargetId] = useState<string | null>(null);
+  const [targetId, _setTargetId] = useState<string | null>(null);
 
   useFrame((_, delta) => {
     if (!snapshots.length) return;
@@ -50,9 +50,9 @@ const FollowCamera = ({
   });
 
   // optional spectate API
-  const spectate = (playerId: string | null) => {
-    setTargetId(playerId);
-  };
+  // const spectate = (playerId: string | null) => {
+  //   setTargetId(playerId);
+  // };
 
   return null;
 };
