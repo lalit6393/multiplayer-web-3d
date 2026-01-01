@@ -11,7 +11,7 @@ const initialState: PlayerSliceState = {
     snapshots: [],
 };
 
-const MAX_SNAPSHOTS = 10;
+const MAX_SNAPSHOTS = 20;
 
 export const playerSlice = createSlice({
     name: 'player',
@@ -24,7 +24,7 @@ export const playerSlice = createSlice({
                 state.snapshots.shift();
             }
         },
-        setMyId: (state, action: PayloadAction<string>) => {
+        setMyId: (state, action: PayloadAction<string | null>) => {
             state.myId = action.payload;
         },
     }

@@ -28,11 +28,8 @@ const PLAYER_RADIUS = 0.4;
 const PLAYER_HALF_HEIGHT = 1.2;
 
 //player movement
-const SPEED = 5 * FIXED_TIME_STEP; //speed
-const JUMP_IMPULSE = { x: 0, y: 12, z: 0 };
-
-const JUMP_VELOCITY = 12 * FIXED_TIME_STEP; // Adjusted for 2025 feel
-const TICK_GRAVITY = -25 * FIXED_TIME_STEP * FIXED_TIME_STEP; // Standard gravity needs a boost for games
+const SPEED = 5;
+const JUMP_VELOCITY = 8;  // units / second
 
 module.exports = {
   GROUND_HALF_SIZE,
@@ -42,9 +39,7 @@ module.exports = {
   WALL_THICKNESS,
   WALL_HALF_HEIGHT,
   SPEED,
-  JUMP_IMPULSE,
   PLAYER_RADIUS,
   PLAYER_HALF_HEIGHT,
   JUMP_VELOCITY,
-  TICK_GRAVITY,
 };

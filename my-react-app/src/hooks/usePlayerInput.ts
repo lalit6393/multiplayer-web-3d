@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 
-type InputPacket = {
+export type InputPacket = {
     forward: boolean;
     backward: boolean;
     left: boolean;

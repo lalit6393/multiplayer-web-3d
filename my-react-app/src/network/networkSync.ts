@@ -15,6 +15,7 @@ export const startNetworkSync = async (dispatch: AppDispatch) => {
 
   socket.on("disconnect", () => {
     console.log("Disconnected");
+    dispatch(setMyId(null));
   });
 
   // Single authoritative update path

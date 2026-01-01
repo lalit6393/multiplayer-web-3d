@@ -64,8 +64,6 @@ const RemotePlayer = ({ playerId }: Props) => {
       }
     }
 
-    console.log(older, newer);
-
     if (!older || !newer) return;
 
     const p1 = older.players[playerId];

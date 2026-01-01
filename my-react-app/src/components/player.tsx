@@ -4,7 +4,7 @@ import type { Mesh } from "three";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from 'three';
 import { playerMovement } from "../helpers/movementHelper";
-import { usePlayerInput } from "../hooks/usePlayerInput";
+import { usePlayerInput, type InputPacket } from "../hooks/usePlayerInput";
 import { socket } from "../socket";
 import { shallowEqual, useSelector } from "react-redux";
 import type { RootState } from "../redux/store";
@@ -29,12 +29,9 @@ type PacketType = {
 
 
 const TICK_RATE = 1 / 60;
-const SPEED = 5 * TICK_RATE;
-const GRAVITY_PER_SECOND = -25;
-const JUMP_VELOCITY = 12 * TICK_RATE;
-const TICK_GRAVITY = GRAVITY_PER_SECOND * TICK_RATE * TICK_RATE; // Standard gravity needs a boost for games
-
-const v3 = new THREE.Vector3();
+const SPEED = 5;
+const GRAVITY = -9.8;       // units / second²
+const JUMP_VELOCITY = 8;  // units / second
 
 const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   const myId = useSelector((state: RootState) => state.player.myId);
@@ -52,6 +49,10 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   const lastProcessedSnapshot = useRef<number>(-1);
   const accumulator = useRef<number>(0);
 
+  //position ref for interpolation
+  const previousPosition = useRef(new THREE.Vector3());
+  const currentPosition = useRef(new THREE.Vector3());
+
   const characterController = useMemo(() => {
     const controller = world.createCharacterController(0.01);
     controller.enableAutostep(0.5, 0.2, true);
@@ -60,91 +61,118 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
 
   useImperativeHandle(ref, () => meshRef.current);
 
-  // --- STANDARD SIMULATION FUNCTION ---
-  // This logic MUST be identical to your server
-  const runSimulationStep = (input: any) => {
+
+  const simulateLocal = (input: InputPacket) => {
     const collider = rbRef.current?.collider(0);
     if (!collider) return;
-    if (isGrounded.current && verticalVelocity.current <= 0) {
-      verticalVelocity.current = 0;
-      if (input.jump) verticalVelocity.current = JUMP_VELOCITY;
-    } else {
-      verticalVelocity.current += TICK_GRAVITY;
+    
+    // Jump
+    if (isGrounded.current && input.jump) {
+      verticalVelocity.current = JUMP_VELOCITY;
     }
-    verticalVelocity.current = Math.max(verticalVelocity.current, -0.5);
+
+    // Gravity (per-second)
+    verticalVelocity.current += GRAVITY * TICK_RATE;
+
+    // Clamp fall speed
+    verticalVelocity.current = Math.max(verticalVelocity.current, -15);
 
     const move = playerMovement(input.yaw, input);
 
-    characterController.computeColliderMovement(
-      collider,
-      { x: move.moveX * SPEED, y: verticalVelocity.current, z: move.moveZ * SPEED }
-    );
+    const desiredTranslation = {
+      x: move.moveX * SPEED * TICK_RATE,
+      y: verticalVelocity.current * TICK_RATE,
+      z: move.moveZ * SPEED * TICK_RATE
+    };
 
+    const wasGrounded = isGrounded.current;
+    characterController.computeColliderMovement(collider, desiredTranslation);
     const corrected = characterController.computedMovement();
     const currentPos = rbRef.current.translation();
+    isGrounded.current = characterController.computedGrounded();
 
-    // Immediate apply for the simulation
-    rbRef.current.setTranslation({
+    if (!wasGrounded && isGrounded.current && verticalVelocity.current < 0) {
+      verticalVelocity.current = 0;
+    }
+
+    const newPos = {
       x: currentPos.x + corrected.x,
       y: currentPos.y + corrected.y,
       z: currentPos.z + corrected.z
-    }, true);
+    };
 
-    isGrounded.current = characterController.computedGrounded();
-  };
+    rbRef.current.setTranslation(newPos, false);
+  }
 
-  // --- STANDARD RECONCILIATION ---
-  useFrame(() => {
+  function reconcileWithServer() {
     if (!rbRef.current || snapshots.length === 0 || !myId) return;
 
     const latestSnapshot = snapshots[snapshots.length - 1];
     const myState = latestSnapshot.players[myId];
 
-    // Check if we need to reconcile (Snap to server truth and replay)
-    if (myState && myState.lastProcessedInputSeq > lastProcessedSnapshot.current) {
-      lastProcessedSnapshot.current = myState.lastProcessedInputSeq;
+    if (!myState) return;
 
-      // 1. Teleport back to Server Truth
-      rbRef.current.setTranslation(myState.position, true);
-      verticalVelocity.current = myState.verticalVelocity;
-      isGrounded.current = myState.isGrounded;
+    if (myState.lastProcessedInputSeq <= lastProcessedSnapshot.current) return;
 
-      // 2. Clear old history
-      inputHistory.current = inputHistory.current.filter(p => p.seq > myState.lastProcessedInputSeq);
+    lastProcessedSnapshot.current = myState.lastProcessedInputSeq;
 
-      // 3. Fast-forward back to present
-      inputHistory.current.forEach(packet => {
-        runSimulationStep(packet.input);
-      });
-    }
-  });
+    // Snap to server truth
+    rbRef.current.setTranslation(myState.position, true);
+    verticalVelocity.current = myState.verticalVelocity;
+    isGrounded.current = myState.isGrounded;
 
-  // --- STANDARD PREDICTION LOOP ---
+    // Remove confirmed inputs
+    inputHistory.current = inputHistory.current.filter(
+      p => p.seq > myState.lastProcessedInputSeq
+    );
+
+    // Replay remaining inputs (deterministic)
+    inputHistory.current.forEach(packet => {
+      simulateLocal(packet.input);
+    });
+  }
+
+
+  // --- PREDICTION LOOP ---
   useFrame((_, delta) => {
-    accumulator.current += Math.min(delta, 0.25);
+    if (!myId) {
+      // Render only — NO simulation
+      meshRef.current.position.copy(currentPosition.current);
+      return;
+    }
+    accumulator.current += Math.min(delta, 0.1);
 
     while (accumulator.current >= TICK_RATE) {
-      // 1. Record input
+      previousPosition.current.copy(currentPosition.current);
+      // Predict locally
+      reconcileWithServer();
+      // Record input
       const seq = ++inputSequence.current;
       const packet = { seq, input: { ...inputRef.current } };
 
-      // 2. Predict locally
-      runSimulationStep(packet.input);
+      // Predict locally
+      simulateLocal(packet.input);
 
-      // 3. Store for later reconciliation
+      const t = rbRef.current.translation();
+
+      currentPosition.current.set(t.x, t.y, t.z);
+
+      // Store for later reconciliation
       inputHistory.current.push(packet);
       socket.emit("player-input", packet);
 
       accumulator.current -= TICK_RATE;
     }
 
-    // --- STANDARD VISUAL INTERPOLATION ---
-    // This is how you stop the jitter. The mesh 'trails' the body.
+    //interpolation logic
+    const alpha = accumulator.current / TICK_RATE;
+
     if (meshRef.current && rbRef.current) {
-      const t = rbRef.current.translation();
-      v3.set(t.x, t.y, t.z);
-      // Use a standard lerp factor. 0.25 is a good balance of responsiveness and smoothness.
-      meshRef.current.position.lerp(v3, 0.25);
+      meshRef.current.position.lerpVectors(
+        previousPosition.current,
+        currentPosition.current,
+        alpha
+      );
     }
   });
 

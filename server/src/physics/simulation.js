@@ -1,4 +1,9 @@
-const { SPEED, JUMP_VELOCITY, TICK_GRAVITY } = require("../../constants");
+const {
+  JUMP_VELOCITY,
+  GRAVITY,
+  SPEED,
+  FIXED_TIME_STEP,
+} = require("../../constants");
 const { getPlayers } = require("../players/players");
 const { playerMovement } = require("../utils/func");
 
@@ -28,29 +33,35 @@ function simulatePlayers(world, io, RAPIER) {
         player.verticalVelocity = 0;
       }
 
-      if (player.isGrounded && player.verticalVelocity <= 0) {
-        player.verticalVelocity = 0;
-        if (input.jump) player.verticalVelocity = JUMP_VELOCITY;
-      } else {
-        player.verticalVelocity += TICK_GRAVITY;
+      // Jump
+      if (player.isGrounded && input.jump) {
+        player.verticalVelocity = JUMP_VELOCITY;
       }
 
-      player.verticalVelocity = Math.max(player.verticalVelocity, -0.5);
+      // Gravity (per-second)
+      player.verticalVelocity += GRAVITY.y * FIXED_TIME_STEP;
+
+      // Clamp fall speed
+      player.verticalVelocity = Math.max(player.verticalVelocity, -15);
 
       const move = playerMovement(yaw, input);
 
-      let dx = move.moveX * SPEED;
-      let dz = move.moveZ * SPEED;
+      let dx = move.moveX * SPEED * FIXED_TIME_STEP;
+      let dz = move.moveZ * SPEED * FIXED_TIME_STEP;
 
+      const wasGrounded = player.isGrounded;
       characterController.computeColliderMovement(player.collider, {
         x: dx,
-        y: player.verticalVelocity,
+        y: player.verticalVelocity * FIXED_TIME_STEP,
         z: dz,
       });
 
       // B. Manual Gravity Logic (Match Player.tsx)
       const corrected = characterController.computedMovement();
       player.isGrounded = characterController.computedGrounded();
+      if (!wasGrounded && player.isGrounded && player.verticalVelocity < 0) {
+        player.verticalVelocity = 0;
+      }
 
       // D. Apply resulting position
       const currentPos = player.body.translation();

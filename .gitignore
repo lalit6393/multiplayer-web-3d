@@ -1,2 +1,4 @@
 /my-react-app/node_modules
 /server/node_modules
+/my-react-app/.env*
+/server/.env*
