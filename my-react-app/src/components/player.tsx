@@ -54,7 +54,7 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   const currentPosition = useRef(new THREE.Vector3());
 
   const characterController = useMemo(() => {
-    const controller = world.createCharacterController(0.01);
+    const controller = world.createCharacterController(0.08);
     controller.enableAutostep(0.5, 0.2, true);
     return controller;
   }, [world]);
@@ -65,14 +65,21 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
   const simulateLocal = (input: InputPacket) => {
     const collider = rbRef.current?.collider(0);
     if (!collider) return;
-    
+
     // Jump
-    if (isGrounded.current && input.jump) {
+    const canJump = isGrounded.current && verticalVelocity.current <= 0;
+
+    if (canJump && input.jump) {
       verticalVelocity.current = JUMP_VELOCITY;
     }
 
     // Gravity (per-second)
-    verticalVelocity.current += GRAVITY * TICK_RATE;
+    if (!isGrounded.current) {
+      verticalVelocity.current += GRAVITY * TICK_RATE;
+    } else if (verticalVelocity.current < 0) {
+      verticalVelocity.current = 0;
+    }
+
 
     // Clamp fall speed
     verticalVelocity.current = Math.max(verticalVelocity.current, -15);
@@ -140,6 +147,9 @@ const Player = forwardRef<THREE.Mesh, PlayerProps>((_, ref) => {
       meshRef.current.position.copy(currentPosition.current);
       return;
     }
+    // console.log(verticalVelocity.current);
+    console.log(isGrounded.current);
+
     accumulator.current += Math.min(delta, 0.1);
 
     while (accumulator.current >= TICK_RATE) {

@@ -12,7 +12,7 @@ let characterController = null;
 
 function simulatePlayers(world, io, RAPIER) {
   if (!characterController) {
-    characterController = world.createCharacterController(0.01);
+    characterController = world.createCharacterController(0.08);
     characterController.enableAutostep(0.5, 0.2, true);
   }
 
@@ -34,12 +34,16 @@ function simulatePlayers(world, io, RAPIER) {
       }
 
       // Jump
-      if (player.isGrounded && input.jump) {
+      if (player.isGrounded && player.verticalVelocity <= 0 && input.jump) {
         player.verticalVelocity = JUMP_VELOCITY;
       }
 
       // Gravity (per-second)
-      player.verticalVelocity += GRAVITY.y * FIXED_TIME_STEP;
+      if (!player.isGrounded) {
+        player.verticalVelocity += GRAVITY.y * FIXED_TIME_STEP;
+      } else if (player.verticalVelocity < 0) {
+        player.verticalVelocity = 0;
+      }
 
       // Clamp fall speed
       player.verticalVelocity = Math.max(player.verticalVelocity, -15);
